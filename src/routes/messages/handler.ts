@@ -7,9 +7,11 @@ import { COMPACT_REQUEST } from "~/lib/compact"
 import { getSmallModel, isMessagesApiEnabled } from "~/lib/config"
 import { createHandlerLogger, debugJson } from "~/lib/logger"
 import { findEndpointModel } from "~/lib/models"
+import { parseProviderModelAlias } from "~/lib/provider-model"
 import { checkRateLimit } from "~/lib/rate-limit"
 import { state } from "~/lib/state"
 import { generateRequestIdFromPayload, getRootSessionId } from "~/lib/utils"
+import { handleProviderMessagesForProvider } from "~/routes/provider/messages/handler"
 
 import { type AnthropicMessagesPayload } from "./anthropic-types"
 import {
@@ -27,10 +29,25 @@ import { parseSubagentMarkerFromFirstUser } from "./subagent-marker"
 
 const logger = createHandlerLogger("messages-handler")
 
+export const messagesFlowHandlers = {
+  handleWithChatCompletions,
+  handleWithMessagesApi,
+  handleWithResponsesApi,
+}
+
 export async function handleCompletion(c: Context) {
+  const anthropicPayload = await c.req.json<AnthropicMessagesPayload>()
+  const providerModelAlias = parseProviderModelAlias(anthropicPayload.model)
+  if (providerModelAlias) {
+    anthropicPayload.model = providerModelAlias.model
+    return await handleProviderMessagesForProvider(c, {
+      payload: anthropicPayload,
+      provider: providerModelAlias.provider,
+    })
+  }
+
   await checkRateLimit(state)
 
-  const anthropicPayload = await c.req.json<AnthropicMessagesPayload>()
   debugJson(logger, "Anthropic request payload:", anthropicPayload)
 
   sanitizeIdeTools(anthropicPayload)
@@ -81,35 +98,47 @@ export async function handleCompletion(c: Context) {
   anthropicPayload.model = selectedModel?.id ?? anthropicPayload.model
 
   if (shouldUseMessagesApi(selectedModel)) {
-    return await handleWithMessagesApi(c, anthropicPayload, {
-      anthropicBetaHeader: anthropicBeta,
-      subagentMarker,
-      selectedModel,
-      requestId,
-      sessionId,
-      compactType,
-      logger,
-    })
+    return await messagesFlowHandlers.handleWithMessagesApi(
+      c,
+      anthropicPayload,
+      {
+        anthropicBetaHeader: anthropicBeta,
+        subagentMarker,
+        selectedModel,
+        requestId,
+        sessionId,
+        compactType,
+        logger,
+      },
+    )
   }
 
   if (shouldUseResponsesApi(selectedModel)) {
-    return await handleWithResponsesApi(c, anthropicPayload, {
+    return await messagesFlowHandlers.handleWithResponsesApi(
+      c,
+      anthropicPayload,
+      {
+        subagentMarker,
+        selectedModel,
+        requestId,
+        sessionId,
+        compactType,
+        logger,
+      },
+    )
+  }
+
+  return await messagesFlowHandlers.handleWithChatCompletions(
+    c,
+    anthropicPayload,
+    {
       subagentMarker,
-      selectedModel,
       requestId,
       sessionId,
       compactType,
       logger,
-    })
-  }
-
-  return await handleWithChatCompletions(c, anthropicPayload, {
-    subagentMarker,
-    requestId,
-    sessionId,
-    compactType,
-    logger,
-  })
+    },
+  )
 }
 
 const RESPONSES_ENDPOINT = "/responses"
