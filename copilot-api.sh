@@ -36,8 +36,11 @@ EOF
 }
 
 cmd_install() {
-  echo "==> Building copilot-api binary..."
+  echo "==> Installing dependencies..."
   cd "$SCRIPT_DIR"
+  bun install
+
+  echo "==> Building copilot-api binary..."
   bun build ./src/main.ts --compile --outfile "$BINARY_NAME"
 
   echo "==> Installing to $INSTALL_DIR/$BINARY_NAME (may require sudo)..."
