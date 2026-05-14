@@ -557,5 +557,9 @@ export const prepareMessagesApiPayload = (
     payload.output_config = {
       effort: effort,
     }
+  } else {
+    // Strip output_config for models that don't support adaptive thinking
+    // (e.g. Haiku), even if the client sent it
+    delete payload.output_config
   }
 }

@@ -700,4 +700,47 @@ describe("prepareMessagesApiPayload", () => {
     expect(payload.thinking).toBeUndefined()
     expect(payload.output_config).toBeUndefined()
   })
+
+  test("strips client-sent output_config for models without adaptive thinking support", () => {
+    const payload: AnthropicMessagesPayload = {
+      model: "claude-haiku-4.5",
+      max_tokens: 128,
+      messages: [{ role: "user", content: "hello" }],
+      output_config: {
+        effort: "high",
+      },
+    }
+
+    prepareMessagesApiPayload(payload, {
+      capabilities: {
+        supports: {},
+      },
+    } as never)
+
+    expect(payload.output_config).toBeUndefined()
+  })
+
+  test("strips client-sent output_config when tool choice disables thinking", () => {
+    const payload: AnthropicMessagesPayload = {
+      model: "gpt-5.4",
+      max_tokens: 128,
+      messages: [{ role: "user", content: "hello" }],
+      output_config: {
+        effort: "high",
+      },
+      tool_choice: {
+        type: "any",
+      },
+    }
+
+    prepareMessagesApiPayload(payload, {
+      capabilities: {
+        supports: {
+          adaptive_thinking: true,
+        },
+      },
+    } as never)
+
+    expect(payload.output_config).toBeUndefined()
+  })
 })
